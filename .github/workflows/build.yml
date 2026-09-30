@@ -76,6 +76,7 @@ jobs:
           export ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-android-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          which clang; clang --version | head -2; echo "CC=$CC"
           # qcacld-3.0 has a transient parallel-build race; retry once on failure
           set +e
           make -j$(nproc) Image.gz > ../build-first.log 2>&1
