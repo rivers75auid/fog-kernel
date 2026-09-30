@@ -2315,6 +2315,28 @@ index 0000000..ea4c57d
 +	SUSFS_LOGI("CMD_SUSFS_ADD_SUS_PATH_LOOP -> ret: %d\n", info.err);
 +}
 +
++/* RKSU compatibility shim: marks external dir root (android_data/sdcard) inode
++ * so SuSFS treats it for sus_path lookups. Simplified from newer SuSFS. */
++void susfs_set_i_state_on_external_dir(void __user **user_info) {
++	struct st_susfs_sus_path info = {0};
++	struct path path;
++	struct inode *inode = NULL;
++
++	if (copy_from_user(&info, (struct st_susfs_sus_path __user*)*user_info, sizeof(info))) {
++		return;
++	}
++	if (kern_path(info.target_pathname, LOOKUP_FOLLOW, &path)) {
++		SUSFS_LOGE("failed opening '%s' for i_state\n", info.target_pathname);
++		return;
++	}
++	inode = d_backing_inode(path.dentry);
++	if (inode) {
++		set_bit(AS_FLAGS_SUS_PATH, &inode->i_state);
++		SUSFS_LOGI("set i_state on external dir '%s'\n", info.target_pathname);
++	}
++	path_put(&path);
++}
++
 +static void susfs_run_sus_path_loop(void) {
 +	struct st_susfs_sus_path_list *cursor = NULL;
 +	struct path path;
@@ -3931,6 +3953,8 @@ index 0000000..aa14e91
 +#ifdef CONFIG_KSU_SUSFS_SUS_PATH
 +void susfs_add_sus_path(void __user **user_info);
 +void susfs_add_sus_path_loop(void __user **user_info);
++/* RKSU compatibility: sets i_state on external dir root (android_data/sdcard) */
++void susfs_set_i_state_on_external_dir(void __user **user_info);
 +#endif
 +
 +/* sus_mount */
@@ -4042,6 +4066,7 @@ index 0000000..7c28cdd
 +
 +#define DEFAULT_KSU_MNT_ID 2000000000 /* used for mounts created or single cloned by ksu process */
 +#define DEFAULT_KSU_MNT_GROUP_ID 200000 /* used by mount->mnt_group_id */
++#define DEFAULT_KSU_MNT_MINOR_DEV 200000 /* used by get_anon_bdev() for ksu mounts */
 +
 +#ifndef FUSE_SUPER_MAGIC
 +#define FUSE_SUPER_MAGIC 0x65735546
