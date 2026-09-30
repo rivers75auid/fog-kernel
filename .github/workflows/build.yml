@@ -76,6 +76,8 @@ jobs:
           export ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-android-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
+          # -fcommon: scripts/dtc (host tool) hits "multiple definition" with GCC 10+ default -fno-common
+          export HOSTCFLAGS="-fcommon"
           # qcacld-3.0 has a transient parallel-build race; retry once on failure
           set +e
           make -j$(nproc) Image.gz > ../build-first.log 2>&1
