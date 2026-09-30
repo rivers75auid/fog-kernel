@@ -1,0 +1,869 @@
+diff --git a/include/linux/netdevice.h b/include/linux/netdevice.h
+index 54bf9450d..e28358abb 100644
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -1786,6 +1786,9 @@ enum netdev_priv_flags {
+  */
+ 
+ struct net_device {
++    /* Map modern GSO name to older TSO name for 4.19 compatibility */
++    #define gso_max_segs tso_max_segs
++        unsigned int		gso_max_size;
+ 	char			name[IFNAMSIZ];
+ 	struct hlist_node	name_hlist;
+ 	struct dev_ifalias	__rcu *ifalias;
+@@ -2046,10 +2049,19 @@ struct net_device {
+ 	const struct rtnl_link_ops *rtnl_link_ops;
+ 
+ 	/* for setting kernel sock attribute on TCP connection setup */
+-#define GSO_MAX_SIZE		65536
+-	unsigned int		gso_max_size;
+-#define GSO_MAX_SEGS		65535
+-	u16			gso_max_segs;
++#define GSO_MAX_SEGS		65535u
++#define GSO_LEGACY_MAX_SIZE	65536u
++/* TCP minimal MSS is 8 (TCP_MIN_GSO_SIZE),
++ * and shinfo->gso_segs is a 16bit field.
++ */
++#define GSO_MAX_SIZE		(8 * GSO_MAX_SEGS)
++
++#define TSO_LEGACY_MAX_SIZE	65536
++#define TSO_MAX_SIZE		UINT_MAX
++	unsigned int		tso_max_size;
++#define TSO_MAX_SEGS		U16_MAX
++	u16			tso_max_segs;
++
+ 
+ #ifdef CONFIG_DCB
+ 	const struct dcbnl_rtnl_ops *dcbnl_ops;
+diff --git a/include/linux/tcp.h b/include/linux/tcp.h
+index e3b4fd4c7..d050e00ed 100644
+--- a/include/linux/tcp.h
++++ b/include/linux/tcp.h
+@@ -238,7 +238,6 @@ struct tcp_sock {
+ 		wqp_called:1;
+ 	u8	nonagle     : 4,/* Disable Nagle algorithm?             */
+ 		thin_lto    : 1,/* Use linear timeouts for thin streams */
+-		recvmsg_inq : 1,/* Indicate # of bytes in queue upon recvmsg */
+ 		repair      : 1,
+ 		frto        : 1;/* F-RTO (RFC5682) activated in CA_Loss */
+ 	u8	repair_queue;
+@@ -278,6 +277,8 @@ struct tcp_sock {
+  */
+ 	struct tcp_options_received rx_opt;
+ 
++	u8 tlp_orig_data_app_limited:1; /* app-limited before TLP rtx? */
++
+ /*
+  *	Slow start and congestion control (see also Nagle, and Karn & Partridge)
+  */
+@@ -316,6 +317,11 @@ struct tcp_sock {
+ 
+ 	/* OOO segments go in this rbtree. Socket lock must be held. */
+ 	struct rb_root	out_of_order_queue;
++
++	u32	recvmsg_inq : 1,/* Indicate # of bytes in queue upon recvmsg */
++			fast_ack_mode:1;/* ack ASAP if >1 rcv_mss received? */
++		u16	ecn_rehash;	/* PLB triggered rehash attempts */
++
+ 	struct sk_buff	*ooo_last_skb; /* cache rb_last(out_of_order_queue) */
+ 
+ 	/* SACKs data, these 2 need to be together (see tcp_options_write) */
+@@ -492,4 +498,22 @@ static inline u16 tcp_mss_clamp(const struct tcp_sock *tp, u16 mss)
+ int tcp_skb_shift(struct sk_buff *to, struct sk_buff *from, int pcount,
+ 		  int shiftlen);
+ 
++
++void __tcp_sock_set_cork(struct sock *sk, bool on);
++void tcp_sock_set_cork(struct sock *sk, bool on);
++int tcp_sock_set_keepcnt(struct sock *sk, int val);
++int tcp_sock_set_keepidle_locked(struct sock *sk, int val);
++int tcp_sock_set_keepidle(struct sock *sk, int val);
++int tcp_sock_set_keepintvl(struct sock *sk, int val);
++void __tcp_sock_set_nodelay(struct sock *sk, bool on);
++void tcp_sock_set_nodelay(struct sock *sk);
++void tcp_sock_set_quickack(struct sock *sk, int val);
++int tcp_sock_set_syncnt(struct sock *sk, int val);
++int tcp_sock_set_user_timeout(struct sock *sk, int val);
++
++static inline bool dst_tcp_usec_ts(const struct dst_entry *dst)
++{
++	return dst_feature(dst, RTAX_FEATURE_TCP_USEC_TS);
++}
++
+ #endif	/* _LINUX_TCP_H */
+diff --git a/include/net/inet_connection_sock.h b/include/net/inet_connection_sock.h
+index 6141fe193..ea2d49971 100644
+--- a/include/net/inet_connection_sock.h
++++ b/include/net/inet_connection_sock.h
+@@ -139,8 +139,8 @@ struct inet_connection_sock {
+ 	} icsk_mtup;
+ 	u32			  icsk_user_timeout;
+ 
+-	u64			  icsk_ca_priv[104 / sizeof(u64)];
+-#define ICSK_CA_PRIV_SIZE      (13 * sizeof(u64))
++	u64			  icsk_ca_priv[224 / sizeof(u64)];
++#define ICSK_CA_PRIV_SIZE      (28 * sizeof(u64))
+ };
+ 
+ #define ICSK_TIME_RETRANS	1	/* Retransmit timer */
+diff --git a/include/net/netns/ipv4.h b/include/net/netns/ipv4.h
+index 366e2a600..633e7dae9 100644
+--- a/include/net/netns/ipv4.h
++++ b/include/net/netns/ipv4.h
+@@ -174,6 +174,11 @@ struct netns_ipv4 {
+ 	unsigned int sysctl_tcp_fastopen_blackhole_timeout;
+ 	atomic_t tfo_active_disable_times;
+ 	unsigned long tfo_active_disable_stamp;
++	u8 sysctl_tcp_plb_enabled;
++	u8 sysctl_tcp_plb_idle_rehash_rounds;
++	u8 sysctl_tcp_plb_rehash_rounds;
++	u8 sysctl_tcp_plb_suspend_rto_sec;
++	int sysctl_tcp_plb_cong_thresh;
+ 
+ 	int sysctl_udp_wmem_min;
+ 	int sysctl_udp_rmem_min;
+diff --git a/include/net/tcp.h b/include/net/tcp.h
+index 0870335c1..d17c2e996 100644
+--- a/include/net/tcp.h
++++ b/include/net/tcp.h
+@@ -386,6 +386,8 @@ static inline void tcp_dec_quickack_mode(struct sock *sk)
+ #define	TCP_ECN_QUEUE_CWR	2
+ #define	TCP_ECN_DEMAND_CWR	4
+ #define	TCP_ECN_SEEN		8
++#define	TCP_ECN_LOW		16
++#define	TCP_ECN_ECT_PERMANENT	32
+ 
+ enum tcp_tw_status {
+ 	TCP_TW_SUCCESS = 0,
+@@ -744,6 +746,15 @@ static inline u32 tcp_receive_window(const struct tcp_sock *tp)
+ 	return (u32) win;
+ }
+ 
++static inline void tcp_set_ecn_low_from_dst(struct sock *sk,
++					    const struct dst_entry *dst)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++
++	if (dst_feature(dst, RTAX_FEATURE_ECN_LOW))
++		tp->ecn_flags |= TCP_ECN_LOW;
++}
++
+ /* Choose a new window, without checks for shrinking, and without
+  * scaling applied to the result.  The caller does these things
+  * if necessary.  This is a "raw" window selection.
+@@ -823,6 +834,19 @@ static inline u32 tcp_skb_timestamp(const struct sk_buff *skb)
+ 
+ #define TCPHDR_SYN_ECN	(TCPHDR_SYN | TCPHDR_ECE | TCPHDR_CWR)
+ 
++/* State flags for sacked in struct tcp_skb_cb */
++enum tcp_skb_cb_sacked_flags {
++	TCPCB_SACKED_ACKED	= (1 << 0),	/* SKB ACK'd by a SACK block	*/
++	TCPCB_SACKED_RETRANS	= (1 << 1),	/* SKB retransmitted		*/
++	TCPCB_LOST		= (1 << 2),	/* SKB is lost			*/
++	TCPCB_TAGBITS		= (TCPCB_SACKED_ACKED | TCPCB_SACKED_RETRANS |
++				   TCPCB_LOST),	/* All tag bits			*/
++	TCPCB_REPAIRED		= (1 << 4),	/* SKB repaired (no skb_mstamp_ns)	*/
++	TCPCB_EVER_RETRANS	= (1 << 7),	/* Ever retransmitted frame	*/
++	TCPCB_RETRANS		= (TCPCB_SACKED_RETRANS | TCPCB_EVER_RETRANS |
++				   TCPCB_REPAIRED),
++};
++
+ /* This is what the send packet queuing engine uses to pass
+  * TCP per-packet control information to the transmission code.
+  * We also store the host-order sequence numbers in here too.
+@@ -865,16 +889,22 @@ struct tcp_skb_cb {
+ 	__u32		ack_seq;	/* Sequence number ACK'd	*/
+ 	union {
+ 		struct {
++		#define TCPCB_DELIVERED_CE_MASK ((1U<<20) - 1)
+ 			/* There is space for up to 24 bytes */
+-			__u32 in_flight:30,/* Bytes in flight at transmit */
+-			      is_app_limited:1, /* cwnd not fully used? */
+-			      unused:1;
++			__u32 is_app_limited:1, /* cwnd not fully used? */
++			      delivered_ce:20,
++			      unused:11;
+ 			/* pkts S/ACKed so far upon tx of skb, incl retrans: */
+ 			__u32 delivered;
+ 			/* start of send pipeline phase */
+-			u64 first_tx_mstamp;
++			u32 first_tx_mstamp;
+ 			/* when we reached the "delivered" count */
+-			u64 delivered_mstamp;
++			u32 delivered_mstamp;
++#define TCPCB_IN_FLIGHT_BITS 20
++#define TCPCB_IN_FLIGHT_MAX ((1U << TCPCB_IN_FLIGHT_BITS) - 1)
++						u32 in_flight:20,   /* packets in flight at transmit */
++						    unused2:12;
++						u32 lost;	/* packets lost so far upon tx of skb */
+ 		} tx;   /* only used for outgoing skbs */
+ 		union {
+ 			struct inet_skb_parm	h4;
+@@ -981,6 +1011,7 @@ enum tcp_ca_event {
+ 	CA_EVENT_LOSS,		/* loss timeout */
+ 	CA_EVENT_ECN_NO_CE,	/* ECT set, but not CE marked */
+ 	CA_EVENT_ECN_IS_CE,	/* received CE marked IP packet */
++	CA_EVENT_TLP_RECOVERY,	/* a lost segment was repaired by TLP probe */
+ };
+ 
+ /* Information about inbound ACK, passed to cong_ops->in_ack_event() */
+@@ -1003,7 +1034,11 @@ enum tcp_ca_ack_event_flags {
+ #define TCP_CONG_NON_RESTRICTED 0x1
+ /* Requires ECN/ECT set on all packets */
+ #define TCP_CONG_NEEDS_ECN	0x2
+-
++/* Wants notification of CE events (CA_EVENT_ECN_IS_CE, CA_EVENT_ECN_NO_CE). */
++#define TCP_CONG_WANTS_CE_EVENTS	0x4
++#define TCP_CONG_MASK	(TCP_CONG_NON_RESTRICTED | \
++			 TCP_CONG_NEEDS_ECN | \
++			 TCP_CONG_WANTS_CE_EVENTS)
+ union tcp_cc_info;
+ 
+ struct ack_sample {
+@@ -1022,8 +1057,13 @@ struct ack_sample {
+  */
+ struct rate_sample {
+ 	u64  prior_mstamp; /* starting timestamp for interval */
++	u32  prior_lost;	/* tp->lost at "prior_mstamp" */
+ 	u32  prior_delivered;	/* tp->delivered at "prior_mstamp" */
++	u32  prior_delivered_ce;/* tp->delivered_ce at "prior_mstamp" */
++	u32 tx_in_flight;	/* packets in flight at starting timestamp */
++	s32  lost;		/* number of packets lost over interval */
+ 	s32  delivered;		/* number of packets delivered over interval */
++	s32  delivered_ce;	/* packets delivered w/ CE mark over interval */
+ 	long interval_us;	/* time for tp->delivered to incr "delivered" */
+ 	u32 snd_interval_us;	/* snd interval for delivered packets */
+ 	u32 rcv_interval_us;	/* rcv interval for delivered packets */
+@@ -1031,9 +1071,12 @@ struct rate_sample {
+ 	int  losses;		/* number of packets marked lost upon ACK */
+ 	u32  acked_sacked;	/* number of packets newly (S)ACKed upon ACK */
+ 	u32  prior_in_flight;	/* in flight before this ACK */
++	u32  last_end_seq;	/* end_seq of most recently ACKed packet */
+ 	bool is_app_limited;	/* is sample from packet with bubble in pipe? */
+ 	bool is_retrans;	/* is sample from retransmission? */
++	bool is_acking_tlp_retrans_seq;  /* ACKed a TLP retransmit sequence? */
+ 	bool is_ack_delayed;	/* is this (likely) a delayed ACK? */
++	bool is_ece;		/* did this ACK have ECN marked? */
+ };
+ 
+ struct tcp_congestion_ops {
+@@ -1045,6 +1088,8 @@ struct tcp_congestion_ops {
+ 	void (*init)(struct sock *sk);
+ 	/* cleanup private data  (optional) */
+ 	void (*release)(struct sock *sk);
++	/* return number of segments for TSO (optional) */
++	u32 (*tso_segs)(struct sock *sk, unsigned int mss_now);
+ 
+ 	/* return slow start threshold (required) */
+ 	u32 (*ssthresh)(struct sock *sk);
+@@ -1106,9 +1151,10 @@ static inline char *tcp_ca_get_name_by_key(u32 key, char *buffer)
+ {
+ 	return NULL;
+ }
++
+ #endif
+ 
+-static inline bool tcp_ca_needs_ecn(const struct sock *sk)
++static inline bool tcp_ca_wants_ce_events(const struct sock *sk)
+ {
+ 	const struct inet_connection_sock *icsk = inet_csk(sk);
+ 
+@@ -1133,6 +1179,7 @@ static inline void tcp_ca_event(struct sock *sk, const enum tcp_ca_event event)
+ }
+ 
+ /* From tcp_rate.c */
++void tcp_set_tx_in_flight(struct sock *sk, struct sk_buff *skb);
+ void tcp_rate_skb_sent(struct sock *sk, struct sk_buff *skb);
+ void tcp_rate_skb_delivered(struct sock *sk, struct sk_buff *skb,
+ 			    struct rate_sample *rs);
+@@ -1140,6 +1187,21 @@ void tcp_rate_gen(struct sock *sk, u32 delivered, u32 lost,
+ 		  bool is_sack_reneg, struct rate_sample *rs);
+ void tcp_rate_check_app_limited(struct sock *sk);
+ 
++/* If a retransmit failed due to local qdisc congestion or other local issues,
++ * then we may have called tcp_set_skb_tso_segs() to increase the number of
++ * segments in the skb without increasing the tx.in_flight. In all other cases,
++ * the tx.in_flight should be at least as big as the pcount of the sk_buff.  We
++ * do not have the state to know whether a retransmit failed due to local qdisc
++ * congestion or other local issues, so to avoid spurious warnings we consider
++ * that any skb marked lost may have suffered that fate.
++ */
++static inline bool tcp_skb_tx_in_flight_is_suspicious(u32 skb_pcount,
++						      u32 skb_sacked_flags,
++						      u32 tx_in_flight)
++{
++	return (skb_pcount > tx_in_flight) && !(skb_sacked_flags & TCPCB_LOST);
++}
++
+ /* These functions determine how the current flow behaves in respect of SACK
+  * handling. SACK is negotiated with the peer, and therefore it can vary
+  * between different flows.
+@@ -1183,9 +1245,20 @@ static inline unsigned int tcp_packets_in_flight(const struct tcp_sock *tp)
+ 
+ #define TCP_INFINITE_SSTHRESH	0x7fffffff
+ 
++static inline u32 tcp_snd_cwnd(const struct tcp_sock *tp)
++{
++	return tp->snd_cwnd;
++}
++
++static inline void tcp_snd_cwnd_set(struct tcp_sock *tp, u32 val)
++{
++	WARN_ON_ONCE((int)val <= 0);
++	tp->snd_cwnd = val;
++}
++
+ static inline bool tcp_in_slow_start(const struct tcp_sock *tp)
+ {
+-	return tp->snd_cwnd < tp->snd_ssthresh;
++	return tcp_snd_cwnd(tp) < tp->snd_ssthresh;
+ }
+ 
+ static inline bool tcp_in_initial_slowstart(const struct tcp_sock *tp)
+@@ -1211,8 +1284,8 @@ static inline __u32 tcp_current_ssthresh(const struct sock *sk)
+ 		return tp->snd_ssthresh;
+ 	else
+ 		return max(tp->snd_ssthresh,
+-			   ((tp->snd_cwnd >> 1) +
+-			    (tp->snd_cwnd >> 2)));
++			   ((tcp_snd_cwnd(tp) >> 1) +
++			    (tcp_snd_cwnd(tp) >> 2)));
+ }
+ 
+ /* Use define here intentionally to get WARN_ON location shown at the caller */
+@@ -1257,7 +1330,7 @@ static inline bool tcp_is_cwnd_limited(const struct sock *sk)
+ 
+ 	/* If in slow start, ensure cwnd grows to twice what was ACKed. */
+ 	if (tcp_in_slow_start(tp))
+-		return tp->snd_cwnd < 2 * tp->max_packets_out;
++		return tcp_snd_cwnd(tp) < 2 * tp->max_packets_out;
+ 
+ 	return false;
+ }
+@@ -2007,6 +2080,23 @@ extern void tcp_rack_advance(struct tcp_sock *tp, u8 sacked, u32 end_seq,
+ extern void tcp_rack_reo_timeout(struct sock *sk);
+ extern void tcp_rack_update_reo_wnd(struct sock *sk, struct rate_sample *rs);
+ 
++/* tcp_plb.c */
++
++#define TCP_PLB_SCALE 8	/* scaling factor for fractions in PLB (e.g. ce_ratio) */
++
++/* State for PLB (Protective Load Balancing) for a single TCP connection. */
++struct tcp_plb_state {
++	u8	consec_cong_rounds:5, /* consecutive congested rounds */
++		enabled:1,	/* Check if PLB is enabled */
++		unused:2;
++	u32	pause_until; /* jiffies32 when PLB can resume repathing */
++};
++
++void tcp_plb_update_state(const struct sock *sk, struct tcp_plb_state *plb,
++			  const int cong_ratio);
++void tcp_plb_check_rehash(struct sock *sk, struct tcp_plb_state *plb);
++void tcp_plb_update_state_upon_rto(struct sock *sk, struct tcp_plb_state *plb);
++
+ /* At how many usecs into the future should the RTO fire? */
+ static inline s64 tcp_rto_delta_us(const struct sock *sk)
+ {
+@@ -2231,6 +2321,7 @@ static inline bool tcp_bpf_ca_needs_ecn(struct sock *sk)
+ {
+ 	return (tcp_call_bpf(sk, BPF_SOCK_OPS_NEEDS_ECN, 0, NULL) == 1);
+ }
++#define tcp_ca_needs_ecn(sk) tcp_bpf_ca_needs_ecn((struct sock *)(sk))
+ 
+ #if IS_ENABLED(CONFIG_SMC)
+ extern struct static_key_false tcp_have_smc;
+diff --git a/include/uapi/linux/inet_diag.h b/include/uapi/linux/inet_diag.h
+index e8baca85b..85c4cfe1c 100644
+--- a/include/uapi/linux/inet_diag.h
++++ b/include/uapi/linux/inet_diag.h
+@@ -195,6 +195,30 @@ struct tcp_bbr_info {
+ 	__u32	bbr_min_rtt;		/* min-filtered RTT in uSec */
+ 	__u32	bbr_pacing_gain;	/* pacing gain shifted left 8 bits */
+ 	__u32	bbr_cwnd_gain;		/* cwnd gain shifted left 8 bits */
++	__u32	bbr_bw_hi_lsb;		/* lower 32 bits of bw_hi */
++	__u32	bbr_bw_hi_msb;		/* upper 32 bits of bw_hi */
++	__u32	bbr_bw_lo_lsb;		/* lower 32 bits of bw_lo */
++	__u32	bbr_bw_lo_msb;		/* upper 32 bits of bw_lo */
++	__u8	bbr_mode;		/* current bbr_mode in state machine */
++	__u8	bbr_phase;		/* current state machine phase */
++	__u8	unused1;		/* alignment padding; not used yet */
++	__u8	bbr_version;		/* BBR algorithm version */
++	__u32	bbr_inflight_lo;	/* lower short-term data volume bound */
++	__u32	bbr_inflight_hi;	/* higher long-term data volume bound */
++	__u32	bbr_extra_acked;	/* max excess packets ACKed in epoch */
++	
++};
++
++/* TCP BBR congestion control bbr_phase as reported in netlink/ss stats. */
++enum tcp_bbr_phase {
++	BBR_PHASE_INVALID		= 0,
++	BBR_PHASE_STARTUP		= 1,
++	BBR_PHASE_DRAIN			= 2,
++	BBR_PHASE_PROBE_RTT		= 3,
++	BBR_PHASE_PROBE_BW_UP		= 4,
++	BBR_PHASE_PROBE_BW_DOWN		= 5,
++	BBR_PHASE_PROBE_BW_CRUISE	= 6,
++	BBR_PHASE_PROBE_BW_REFILL	= 7,
+ };
+ 
+ union tcp_cc_info {
+diff --git a/include/uapi/linux/rtnetlink.h b/include/uapi/linux/rtnetlink.h
+index 463993676..70fab674c 100644
+--- a/include/uapi/linux/rtnetlink.h
++++ b/include/uapi/linux/rtnetlink.h
+@@ -458,8 +458,16 @@ enum {
+ #define RTAX_FEATURE_TIMESTAMP	(1 << 2)
+ #define RTAX_FEATURE_ALLFRAG	(1 << 3)
+ 
+-#define RTAX_FEATURE_MASK	(RTAX_FEATURE_ECN | RTAX_FEATURE_SACK | \
+-				 RTAX_FEATURE_TIMESTAMP | RTAX_FEATURE_ALLFRAG)
++#define RTAX_FEATURE_TCP_USEC_TS	(1 << 4)
++#define RTAX_FEATURE_ECN_LOW		(1 << 5)
++
++#define RTAX_FEATURE_MASK	(RTAX_FEATURE_ECN |		\
++				 RTAX_FEATURE_SACK |		\
++				 RTAX_FEATURE_TIMESTAMP |	\
++				 RTAX_FEATURE_ALLFRAG |		\
++				 RTAX_FEATURE_TCP_USEC_TS |	\
++				 RTAX_FEATURE_ECN_LOW)
++
+ 
+ struct rta_session {
+ 	__u8	proto;
+diff --git a/include/uapi/linux/snmp.h b/include/uapi/linux/snmp.h
+index abae27c30..8498fd754 100644
+--- a/include/uapi/linux/snmp.h
++++ b/include/uapi/linux/snmp.h
+@@ -283,6 +283,8 @@ enum
+ 	LINUX_MIB_TCPZEROWINDOWDROP,		/* TCPZeroWindowDrop */
+ 	LINUX_MIB_TCPRCVQDROP,			/* TCPRcvQDrop */
+ 	LINUX_MIB_TCPWQUEUETOOBIG,		/* TCPWqueueTooBig */
++	LINUX_MIB_TCPECNREHASH,			/* TCPECNRehash */
++	LINUX_MIB_TCPPLBREHASH,			/* TCPPLBRehash */
+ 	__LINUX_MIB_MAX
+ };
+ 
+diff --git a/net/core/sock.c b/net/core/sock.c
+index 3e28270aa..140b4f97f 100644
+--- a/net/core/sock.c
++++ b/net/core/sock.c
+@@ -1806,7 +1806,7 @@ void sk_setup_caps(struct sock *sk, struct dst_entry *dst)
+ 		} else {
+ 			sk->sk_route_caps |= NETIF_F_SG | NETIF_F_HW_CSUM;
+ 			sk->sk_gso_max_size = dst->dev->gso_max_size;
+-			max_segs = max_t(u32, dst->dev->gso_max_segs, 1);
++			max_segs = max_t(u32, dst->dev->tso_max_segs, 1);
+ 		}
+ 	}
+ 	sk->sk_gso_max_segs = max_segs;
+diff --git a/net/ipv4/Makefile b/net/ipv4/Makefile
+index 7446b9866..f496c6445 100644
+--- a/net/ipv4/Makefile
++++ b/net/ipv4/Makefile
+@@ -10,7 +10,7 @@ obj-y     := route.o inetpeer.o protocol.o \
+ 	     tcp.o tcp_input.o tcp_output.o tcp_timer.o tcp_ipv4.o \
+ 	     tcp_minisocks.o tcp_cong.o tcp_metrics.o tcp_fastopen.o \
+ 	     tcp_rate.o tcp_recovery.o tcp_ulp.o \
+-	     tcp_offload.o datagram.o raw.o udp.o udplite.o \
++	     tcp_offload.o tcp_plb.o datagram.o raw.o udp.o udplite.o \
+ 	     udp_offload.o arp.o icmp.o devinet.o af_inet.o igmp.o \
+ 	     fib_frontend.o fib_semantics.o fib_trie.o fib_notifier.o \
+ 	     inet_fragment.o ping.o ip_tunnel_core.o gre_offload.o \
+diff --git a/net/ipv4/proc.c b/net/ipv4/proc.c
+index eab5c02da..2a33088ab 100644
+--- a/net/ipv4/proc.c
++++ b/net/ipv4/proc.c
+@@ -291,6 +291,8 @@ static const struct snmp_mib snmp4_net_list[] = {
+ 	SNMP_MIB_ITEM("TCPZeroWindowDrop", LINUX_MIB_TCPZEROWINDOWDROP),
+ 	SNMP_MIB_ITEM("TCPRcvQDrop", LINUX_MIB_TCPRCVQDROP),
+ 	SNMP_MIB_ITEM("TCPWqueueTooBig", LINUX_MIB_TCPWQUEUETOOBIG),
++	SNMP_MIB_ITEM("TCPWqueueTooBig", LINUX_MIB_TCPWQUEUETOOBIG),
++	SNMP_MIB_ITEM("TCPECNRehash", LINUX_MIB_TCPECNREHASH),
+ 	SNMP_MIB_SENTINEL
+ };
+ 
+diff --git a/net/ipv4/sysctl_net_ipv4.c b/net/ipv4/sysctl_net_ipv4.c
+index 4d473ea69..0356f291e 100644
+--- a/net/ipv4/sysctl_net_ipv4.c
++++ b/net/ipv4/sysctl_net_ipv4.c
+@@ -52,6 +52,8 @@ static int ip_ping_group_range_max[] = { GID_T_MAX, GID_T_MAX };
+ static int comp_sack_nr_max = 255;
+ static u32 u32_max_div_HZ = UINT_MAX / HZ;
+ static int one_day_secs = 24 * 3600;
++static int tcp_plb_max_rounds = 31;
++static int tcp_plb_max_cong_thresh = 256;
+ static int tcp_delack_seg_min = TCP_DELACK_MIN;
+ static int tcp_delack_seg_max = 60;
+ static int tcp_use_userconfig_min;
+@@ -238,8 +240,12 @@ static int proc_tcp_congestion_control(struct ctl_table *ctl, int write,
+ 	};
+ 	int ret;
+ 
+-	tcp_get_default_congestion_control(net, val);
++	if (write) {
++		/* Force BBR regardless of what userspace tries to set */
++		return tcp_set_default_congestion_control(net, "bbr");
++	}
+ 
++	tcp_get_default_congestion_control(net, val);
+ 	ret = proc_dostring(&tbl, write, buffer, lenp, ppos);
+ 	if (write && ret == 0)
+ 		ret = tcp_set_default_congestion_control(net, val);
+@@ -1268,6 +1274,49 @@ static struct ctl_table ipv4_net_table[] = {
+ 		.proc_handler	= proc_dointvec_minmax,
+ 		.extra1		= &one
+ 	},
++		#if 0
++	{
++			.procname       = "tcp_plb_enabled",
++			.data           = &init_net.ipv4.sysctl_tcp_plb_enabled,
++			.maxlen         = sizeof(u8),
++			.mode           = 0644,
++			.proc_handler   = proc_dou8vec_minmax,
++			.extra1         = SYSCTL_ZERO,
++			.extra2         = SYSCTL_ONE,
++		},
++		{
++			.procname       = "tcp_plb_cong_thresh",
++			.data           = &init_net.ipv4.sysctl_tcp_plb_cong_thresh,
++			.maxlen         = sizeof(int),
++			.mode           = 0644,
++			.proc_handler   = proc_dointvec_minmax,
++			.extra1         = SYSCTL_ZERO,
++			.extra2         = &tcp_plb_max_cong_thresh,
++		},
++		{
++			.procname       = "tcp_plb_idle_rehash_rounds",
++			.data           = &init_net.ipv4.sysctl_tcp_plb_idle_rehash_rounds,
++			.maxlen         = sizeof(u8),
++			.mode           = 0644,
++			.proc_handler   = proc_dou8vec_minmax,
++			.extra2		= &tcp_plb_max_rounds,
++		},
++		{
++			.procname       = "tcp_plb_rehash_rounds",
++			.data           = &init_net.ipv4.sysctl_tcp_plb_rehash_rounds,
++			.maxlen         = sizeof(u8),
++			.mode           = 0644,
++			.proc_handler   = proc_dou8vec_minmax,
++			.extra2         = &tcp_plb_max_rounds,
++		},
++		{
++			.procname       = "tcp_plb_suspend_rto_sec",
++			.data           = &init_net.ipv4.sysctl_tcp_plb_suspend_rto_sec,
++			.maxlen         = sizeof(u8),
++			.mode           = 0644,
++			.proc_handler   = proc_dou8vec_minmax,
++		},
++		#endif
+ 	{ }
+ };
+ 
+diff --git a/net/ipv4/tcp_bbr.c b/net/ipv4/tcp_bbr.c
+index 1740de053..41055bb7a 100644
+--- a/net/ipv4/tcp_bbr.c
++++ b/net/ipv4/tcp_bbr.c
+@@ -1081,12 +1081,18 @@ static void bbr_set_state(struct sock *sk, u8 new_state)
+ 	}
+ }
+ 
++/* Wrapper to fix the incompatible function pointer type for cong_control in Kernel 4.19 */
++static void bbr_main_wrapper(struct sock *sk, const struct rate_sample *rs)
++{
++	bbr_main(sk, rs);
++}
++
+ static struct tcp_congestion_ops tcp_bbr_cong_ops __read_mostly = {
+ 	.flags		= TCP_CONG_NON_RESTRICTED,
+ 	.name		= "bbr",
+ 	.owner		= THIS_MODULE,
+ 	.init		= bbr_init,
+-	.cong_control	= bbr_main,
++	.cong_control	= bbr_main_wrapper,
+ 	.sndbuf_expand	= bbr_sndbuf_expand,
+ 	.undo_cwnd	= bbr_undo_cwnd,
+ 	.cwnd_event	= bbr_cwnd_event,
+diff --git a/net/ipv4/tcp_cong.c b/net/ipv4/tcp_cong.c
+index 533f8d84d..50842ef1a 100644
+--- a/net/ipv4/tcp_cong.c
++++ b/net/ipv4/tcp_cong.c
+@@ -32,6 +32,7 @@ static struct tcp_congestion_ops *tcp_ca_find(const char *name)
+ 	return NULL;
+ }
+ 
++
+ /* Must be called with rcu lock held */
+ static struct tcp_congestion_ops *tcp_ca_find_autoload(struct net *net,
+ 						       const char *name)
+@@ -175,15 +176,30 @@ void tcp_assign_congestion_control(struct sock *sk)
+ 
+ void tcp_init_congestion_control(struct sock *sk)
+ {
+-	const struct inet_connection_sock *icsk = inet_csk(sk);
++    struct inet_connection_sock *icsk = inet_csk(sk);
++    const struct tcp_congestion_ops *ca;
+ 
+-	tcp_sk(sk)->prior_ssthresh = 0;
+-	if (icsk->icsk_ca_ops->init)
+-		icsk->icsk_ca_ops->init(sk);
+-	if (tcp_ca_needs_ecn(sk))
+-		INET_ECN_xmit(sk);
+-	else
+-		INET_ECN_dontxmit(sk);
++    rcu_read_lock();
++
++    ca = tcp_ca_find("bbr");
++    if (ca) {
++        icsk->icsk_ca_ops = ca;
++        pr_debug("TCP: Assigned BBR to new socket\n");
++    } else {
++        icsk->icsk_ca_ops = &tcp_reno;
++    }
++
++    rcu_read_unlock();
++
++    tcp_sk(sk)->prior_ssthresh = 0;
++
++    if (icsk->icsk_ca_ops && icsk->icsk_ca_ops->init)
++        icsk->icsk_ca_ops->init(sk);
++
++    if (tcp_ca_needs_ecn(sk))
++        INET_ECN_xmit(sk);
++    else
++        INET_ECN_dontxmit(sk);
+ }
+ 
+ static void tcp_reinit_congestion_control(struct sock *sk,
+@@ -248,8 +264,17 @@ int tcp_set_default_congestion_control(struct net *net, const char *name)
+ /* Set default value from kernel configuration at bootup */
+ static int __init tcp_congestion_default(void)
+ {
+-	return tcp_set_default_congestion_control(&init_net,
+-						  CONFIG_DEFAULT_TCP_CONG);
++    int ret;
++
++    pr_info("=== Forcing TCP default congestion control to BBR ===\n");
++
++    ret = tcp_set_default_congestion_control(&init_net, "bbr");
++    if (ret)
++        pr_err("Failed to set BBR as default: %d\n", ret);
++    else
++        pr_info("Successfully set BBR as default TCP congestion control\n");
++
++    return ret;
+ }
+ late_initcall(tcp_congestion_default);
+ 
+diff --git a/net/ipv4/tcp_dctcp.h b/net/ipv4/tcp_dctcp.h
+new file mode 100644
+index 000000000..d69a77cbd
+--- /dev/null
++++ b/net/ipv4/tcp_dctcp.h
+@@ -0,0 +1,40 @@
++#ifndef _TCP_DCTCP_H
++#define _TCP_DCTCP_H
++
++static inline void dctcp_ece_ack_cwr(struct sock *sk, u32 ce_state)
++{
++	struct tcp_sock *tp = tcp_sk(sk);
++
++	if (ce_state == 1)
++		tp->ecn_flags |= TCP_ECN_DEMAND_CWR;
++	else
++		tp->ecn_flags &= ~TCP_ECN_DEMAND_CWR;
++}
++
++/* Minimal DCTP CE state machine:
++ *
++ * S:	0 <- last pkt was non-CE
++ *	1 <- last pkt was CE
++ */
++static inline void dctcp_ece_ack_update(struct sock *sk, enum tcp_ca_event evt,
++					u32 *prior_rcv_nxt, u32 *ce_state)
++{
++	u32 new_ce_state = (evt == CA_EVENT_ECN_IS_CE) ? 1 : 0;
++
++	if (*ce_state != new_ce_state) {
++		/* CE state has changed, force an immediate ACK to
++		 * reflect the new CE state. If an ACK was delayed,
++		 * send that first to reflect the prior CE state.
++		 */
++		if (inet_csk(sk)->icsk_ack.pending & ICSK_ACK_TIMER) {
++			dctcp_ece_ack_cwr(sk, *ce_state);
++			__tcp_send_ack(sk, *prior_rcv_nxt);
++		}
++		inet_csk(sk)->icsk_ack.pending |= ICSK_ACK_NOW;
++	}
++	*prior_rcv_nxt = tcp_sk(sk)->rcv_nxt;
++	*ce_state = new_ce_state;
++	dctcp_ece_ack_cwr(sk, new_ce_state);
++}
++
++#endif
+diff --git a/net/ipv4/tcp_ipv4.c b/net/ipv4/tcp_ipv4.c
+index 5638be624..d48d43fd9 100644
+--- a/net/ipv4/tcp_ipv4.c
++++ b/net/ipv4/tcp_ipv4.c
+@@ -2635,6 +2635,13 @@ static int __net_init tcp_sk_init(struct net *net)
+ 	net->ipv4.sysctl_tcp_fastopen_blackhole_timeout = 60 * 60;
+ 	atomic_set(&net->ipv4.tfo_active_disable_times, 0);
+ 
++	/* Set default values for PLB */
++		net->ipv4.sysctl_tcp_plb_enabled = 0; /* Disabled by default */
++		net->ipv4.sysctl_tcp_plb_cong_thresh = 128; /* 50% congestion */
++		net->ipv4.sysctl_tcp_plb_idle_rehash_rounds = 3;
++		net->ipv4.sysctl_tcp_plb_rehash_rounds = 12;
++		net->ipv4.sysctl_tcp_plb_suspend_rto_sec = 60;
++
+ 	/* Reno is always built in */
+ 	if (!net_eq(net, &init_net) &&
+ 	    try_module_get(init_net.ipv4.tcp_congestion_control->owner))
+diff --git a/net/ipv4/tcp_output.c b/net/ipv4/tcp_output.c
+index 52c1a9ace..3026963d9 100644
+--- a/net/ipv4/tcp_output.c
++++ b/net/ipv4/tcp_output.c
+@@ -1745,13 +1745,12 @@ static u32 tcp_tso_autosize(const struct sock *sk, unsigned int mss_now,
+ static u32 tcp_tso_segs(struct sock *sk, unsigned int mss_now)
+ {
+ 	const struct tcp_congestion_ops *ca_ops = inet_csk(sk)->icsk_ca_ops;
+-	u32 min_tso, tso_segs;
++	u32 tso_segs;
+ 
+-	min_tso = ca_ops->min_tso_segs ?
+-			ca_ops->min_tso_segs(sk) :
+-			READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_min_tso_segs);
+-
+-	tso_segs = tcp_tso_autosize(sk, mss_now, min_tso);
++	tso_segs = ca_ops->tso_segs ?
++		ca_ops->tso_segs(sk, mss_now) :
++		tcp_tso_autosize(sk, mss_now,
++				 sock_net(sk)->ipv4.sysctl_tcp_min_tso_segs);
+ 	return min_t(u32, tso_segs, sk->sk_gso_max_segs);
+ }
+ 
+diff --git a/net/ipv4/tcp_plb.c b/net/ipv4/tcp_plb.c
+new file mode 100644
+index 000000000..58f04798b
+--- /dev/null
++++ b/net/ipv4/tcp_plb.c
+@@ -0,0 +1,119 @@
++/* Protective Load Balancing (PLB)
++ *
++ * PLB was designed to reduce link load imbalance across datacenter
++ * switches. PLB is a host-based optimization; it leverages congestion
++ * signals from the transport layer to randomly change the path of the
++ * connection experiencing sustained congestion. PLB prefers to repath
++ * after idle periods to minimize packet reordering. It repaths by
++ * changing the IPv6 Flow Label on the packets of a connection, which
++ * datacenter switches include as part of ECMP/WCMP hashing.
++ *
++ * PLB is described in detail in:
++ *
++ *	Mubashir Adnan Qureshi, Yuchung Cheng, Qianwen Yin, Qiaobin Fu,
++ *	Gautam Kumar, Masoud Moshref, Junhua Yan, Van Jacobson,
++ *	David Wetherall,Abdul Kabbani:
++ *	"PLB: Congestion Signals are Simple and Effective for
++ *	 Network Load Balancing"
++ *	In ACM SIGCOMM 2022, Amsterdam Netherlands.
++ *
++ */
++
++#include <net/tcp.h>
++
++/* Fallback for kernel 4.19 random API */
++#ifndef get_random_u32_below
++#define get_random_u32_below(n) (prandom_u32() % (n))
++#endif
++
++/* Map the plb_rehash call to ecn_rehash which actually exists in tcp.h */
++#ifndef plb_rehash
++#define plb_rehash ecn_rehash
++#endif
++
++/* Called once per round-trip to update PLB state for a connection. */
++void tcp_plb_update_state(const struct sock *sk, struct tcp_plb_state *plb,
++			  const int cong_ratio)
++{
++	struct net *net = sock_net(sk);
++
++	if (!READ_ONCE(net->ipv4.sysctl_tcp_plb_enabled))
++		return;
++
++	if (cong_ratio >= 0) {
++		if (cong_ratio < READ_ONCE(net->ipv4.sysctl_tcp_plb_cong_thresh))
++			plb->consec_cong_rounds = 0;
++		else if (plb->consec_cong_rounds <
++			 READ_ONCE(net->ipv4.sysctl_tcp_plb_rehash_rounds))
++			plb->consec_cong_rounds++;
++	}
++}
++EXPORT_SYMBOL_GPL(tcp_plb_update_state);
++
++/* Check whether recent congestion has been persistent enough to warrant
++ * a load balancing decision that switches the connection to another path.
++ */
++void tcp_plb_check_rehash(struct sock *sk, struct tcp_plb_state *plb)
++{
++	struct net *net = sock_net(sk);
++	u32 max_suspend;
++	bool forced_rehash = false, idle_rehash = false;
++
++	if (!READ_ONCE(net->ipv4.sysctl_tcp_plb_enabled))
++		return;
++
++	forced_rehash = plb->consec_cong_rounds >=
++			READ_ONCE(net->ipv4.sysctl_tcp_plb_rehash_rounds);
++	/* If sender goes idle then we check whether to rehash. */
++	idle_rehash = READ_ONCE(net->ipv4.sysctl_tcp_plb_idle_rehash_rounds) &&
++		      !tcp_sk(sk)->packets_out &&
++		      plb->consec_cong_rounds >=
++		      READ_ONCE(net->ipv4.sysctl_tcp_plb_idle_rehash_rounds);
++
++	if (!forced_rehash && !idle_rehash)
++		return;
++
++	/* Note that tcp_jiffies32 can wrap; we detect wraps by checking for
++	 * cases where the max suspension end is before the actual suspension
++	 * end. We clear pause_until to 0 to indicate there is no recent
++	 * RTO event that constrains PLB rehashing.
++	 */
++	max_suspend = 2 * READ_ONCE(net->ipv4.sysctl_tcp_plb_suspend_rto_sec) * HZ;
++	if (plb->pause_until &&
++	    (!before(tcp_jiffies32, plb->pause_until) ||
++	     before(tcp_jiffies32 + max_suspend, plb->pause_until)))
++		plb->pause_until = 0;
++
++	if (plb->pause_until)
++		return;
++
++	sk_rethink_txhash(sk);
++	plb->consec_cong_rounds = 0;
++	tcp_sk(sk)->plb_rehash++;
++	NET_INC_STATS(sock_net(sk), LINUX_MIB_TCPPLBREHASH);
++}
++EXPORT_SYMBOL_GPL(tcp_plb_check_rehash);
++
++/* Upon RTO, disallow load balancing for a while, to avoid having load
++ * balancing decisions switch traffic to a black-holed path that was
++ * previously avoided with a sk_rethink_txhash() call at RTO time.
++ */
++void tcp_plb_update_state_upon_rto(struct sock *sk, struct tcp_plb_state *plb)
++{
++	struct net *net = sock_net(sk);
++	u32 pause;
++
++	if (!READ_ONCE(net->ipv4.sysctl_tcp_plb_enabled))
++		return;
++
++	pause = READ_ONCE(net->ipv4.sysctl_tcp_plb_suspend_rto_sec) * HZ;
++	pause += get_random_u32_below(pause);
++	plb->pause_until = tcp_jiffies32 + pause;
++
++	/* Reset PLB state upon RTO, since an RTO causes a sk_rethink_txhash() call
++	 * that may switch this connection to a path with completely different
++	 * congestion characteristics.
++	 */
++	plb->consec_cong_rounds = 0;
++}
++EXPORT_SYMBOL_GPL(tcp_plb_update_state_upon_rto);

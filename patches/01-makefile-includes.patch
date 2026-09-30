@@ -1,0 +1,112 @@
+diff --git a/drivers/clk/qcom/Makefile b/drivers/clk/qcom/Makefile
+index 15abfd421..913fa03d1 100644
+--- a/drivers/clk/qcom/Makefile
++++ b/drivers/clk/qcom/Makefile
+@@ -1,6 +1,8 @@
+ # SPDX-License-Identifier: GPL-2.0
+ obj-$(CONFIG_COMMON_CLK_QCOM) += clk-qcom.o
+ 
++CFLAGS_clk-debug.o := -I$(src)
++
+ clk-qcom-y += common.o
+ clk-qcom-y += clk-regmap.o
+ clk-qcom-y += clk-alpha-pll.o
+diff --git a/techpack/camera-bengal/Makefile b/techpack/camera-bengal/Makefile
+index 2c8115903..8c23c78f9 100644
+--- a/techpack/camera-bengal/Makefile
++++ b/techpack/camera-bengal/Makefile
+@@ -28,6 +28,80 @@ USERINCLUDE     += \
+ # Needed to be compatible with the O= option
+ LINUXINCLUDE    += \
+                 -I$(srctree)/techpack/camera-bengal/include/uapi \
+-                -I$(srctree)/techpack/camera-bengal/include
++                -I$(srctree)/techpack/camera-bengal/include \
++                -I$(srctree)/techpack/camera-bengal/drivers \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cdm \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_core \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cpas \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cpas/camss_top \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cpas/cpas_top \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cpas/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cust \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cust/cam_custom_hw_mgr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cust/cam_custom_hw_mgr/cam_custom_csid \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cust/cam_custom_hw_mgr/cam_custom_hw1 \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_cust/cam_custom_hw_mgr/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_fd \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_fd/fd_hw_mgr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_fd/fd_hw_mgr/fd_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp/fw_inc \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp/icp_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp/icp_hw/a5_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp/icp_hw/bps_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp/icp_hw/icp_hw_mgr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp/icp_hw/icp_hw_mgr/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp/icp_hw/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_icp/icp_hw/ipe_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/hw_utils \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/hw_utils/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/hw_utils/irq_controller \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/ife_csid_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/ppi_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/tfe_csid_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/tfe_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/top_tpg \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe17x \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_bus/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_isp/isp_hw_mgr/isp_hw/vfe_hw/vfe_top/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_jpeg \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_jpeg/jpeg_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_jpeg/jpeg_hw/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_jpeg/jpeg_hw/jpeg_dma_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_jpeg/jpeg_hw/jpeg_enc_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_lrme \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_lrme/lrme_hw_mgr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_lrme/lrme_hw_mgr/lrme_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_ope \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_ope/ope_hw_mgr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_ope/ope_hw_mgr/ope_hw \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_ope/ope_hw_mgr/ope_hw/bus_rd \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_ope/ope_hw_mgr/ope_hw/bus_wr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_ope/ope_hw_mgr/ope_hw/top \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_req_mgr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_actuator \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_cci \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_csiphy \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_csiphy/include \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_eeprom \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_flash \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_ois \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_res_mgr \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_sensor \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_sensor_io \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sensor_module/cam_sensor_utils \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_smmu \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_sync \
++                -I$(srctree)/techpack/camera-bengal/drivers/cam_utils \
++                -I$(srctree)/techpack/camera-bengal/drivers/wl2866d
+ obj-y += drivers/
+ endif
+diff --git a/techpack/display/pll/Makefile b/techpack/display/pll/Makefile
+index 0b29a90ca..b8648fada 100644
+--- a/techpack/display/pll/Makefile
++++ b/techpack/display/pll/Makefile
+@@ -2,6 +2,8 @@
+ 
+ ccflags-y := -I$(srctree)/drivers/clk/qcom/
+ 
++CFLAGS_dsi_pll_10nm.o := -I$(src)
++
+ obj-$(CONFIG_QCOM_MDSS_PLL) += pll_util.o
+ obj-$(CONFIG_QCOM_MDSS_PLL) += pll_drv.o
+ obj-$(CONFIG_QCOM_MDSS_PLL) += dsi_pll_10nm.o
