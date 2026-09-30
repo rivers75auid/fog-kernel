@@ -2337,7 +2337,7 @@ index 0000000..ea4c57d
 +	path_put(&path);
 +}
 +
-+static void susfs_run_sus_path_loop(void) {
++static void susfs_run_sus_path_loop_internal(void) {
 +	struct st_susfs_sus_path_list *cursor = NULL;
 +	struct path path;
 +	struct inode *inode;
@@ -3741,7 +3741,7 @@ index 0000000..ea4c57d
 +	if (!ksu_cred)
 +		return;
 +#ifdef CONFIG_KSU_SUSFS_SUS_PATH
-+	susfs_run_sus_path_loop();
++	susfs_run_sus_path_loop_internal();
 +#endif // #ifdef CONFIG_KSU_SUSFS_SUS_PATH
 +}
 +

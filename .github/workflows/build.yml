@@ -28,10 +28,10 @@ jobs:
           done
           echo "All patches applied."
 
-      - name: Set up RKSU (with SuSFS branch)
+      - name: Set up ReSukiSU (manual hooks, no SuSFS)
         run: |
           cd kernel
-          bash ../build-repo/scripts/setup-rksu.sh
+          bash ../build-repo/scripts/setup-resukisu.sh
 
       - name: Install build dependencies
         run: |
@@ -64,9 +64,9 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           make vendor/fog-perf_defconfig
           make olddefconfig
-          echo "=== KSU/SUSFS config check ==="
-          grep -E "^CONFIG_KSU=|^CONFIG_KSU_SUSFS=" .config
-          test "$(grep -c '^CONFIG_KSU_SUSFS' .config)" = "11"
+          echo "=== KSU config check ==="
+          grep -E "^CONFIG_KSU=|^CONFIG_KSU_MANUAL_HOOK=" .config
+          test "$(grep -c '^CONFIG_KSU_MANUAL_HOOK=y' .config)" = "1"
           grep -E "^CONFIG_UKSM=|^CONFIG_KSM=|^CONFIG_ZRAM_DEF_COMP=|^CONFIG_DEFAULT_TCP_CONG=" .config
 
       - name: Build kernel
