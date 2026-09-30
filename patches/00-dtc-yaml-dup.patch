@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: fog-kernel-ci
+Date: Tue, 30 Sep 2026 00:00:00 +0000
+Subject: [PATCH] scripts/dtc: drop duplicated yaml-0.1 block (yamltree.o added twice)
+
+The Makefile contains two identical ifeq blocks checking for yaml-0.1,
+both appending yamltree.o to dtc-objs. When libyaml is present, yamltree.o
+is linked twice -> "multiple definition of `yaml_error_name'".
+
+Keep only the second block (which also sets the yaml cflags/libs).
+
+diff --git a/scripts/dtc/Makefile b/scripts/dtc/Makefile
+--- a/scripts/dtc/Makefile
++++ b/scripts/dtc/Makefile
+@@ -20,13 +20,6 @@ HOST_EXTRACFLAGS += -I $(srctree)/$(src)/libfdt
+ 
+ ifeq ($(shell pkg-config --exists yaml-0.1 2>/dev/null && echo yes),)
+ HOST_EXTRACFLAGS += -DNO_YAML
+-else
+-dtc-objs	+= yamltree.o
+-HOSTLDLIBS_dtc	:= $(shell pkg-config yaml-0.1 --libs)
+-endif
+-
+-ifeq ($(shell pkg-config --exists yaml-0.1 2>/dev/null && echo yes),)
+-HOST_EXTRACFLAGS += -DNO_YAML
+ else
+ dtc-objs	+= yamltree.o
+ # To include <yaml.h> installed in a non-default path
