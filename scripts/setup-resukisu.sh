@@ -18,6 +18,10 @@ git clone --depth 1 --branch "${RESUKISU_BRANCH}" "${RESUKISU_REPO}" KernelSU
 echo "==> Recreating drivers/kernelsu symlink"
 ln -s ../KernelSU/kernel drivers/kernelsu
 
+echo "==> Forcing KSU_MANUAL_HOOK as default (not tracepoint)"
+sed -i 's/default KSU_TRACEPOINT_HOOK/default KSU_MANUAL_HOOK/' KernelSU/kernel/Kconfig
+grep -m1 "default KSU_MANUAL_HOOK" KernelSU/kernel/Kconfig || echo "(WARNING: Kconfig default not patched)"
+
 echo "==> ReSukiSU setup done"
 ls -la drivers/kernelsu
 grep -m1 "KSU_MANUAL_HOOK" KernelSU/kernel/Kconfig || echo "(no MANUAL_HOOK found - check branch)"
