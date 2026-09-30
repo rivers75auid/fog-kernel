@@ -64,6 +64,10 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           make vendor/fog-perf_defconfig
           make olddefconfig
+          # Disable UKSM (RAM bug - remove for now)
+          ./scripts/config --disable CONFIG_UKSM
+          # Force zram zstd (not lz4)
+          ./scripts/config --enable CONFIG_ZRAM_DEF_COMP_ZSTD
           echo "=== KSU/SUSFS config check ==="
           grep -E "^CONFIG_KSU=|^CONFIG_KSU_SUSFS=" .config
           test "$(grep -c '^CONFIG_KSU_SUSFS' .config)" = "11"
