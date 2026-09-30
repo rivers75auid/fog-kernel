@@ -41,22 +41,22 @@ jobs:
       - name: Download toolchains
         run: |
           mkdir -p toolchain && cd toolchain
-          echo "==> WeebX-Clang 19.1.5"
-          curl -L -o weebx.tar.gz \
-            https://github.com/XSans0/WeebX-Clang/releases/download/WeebX-Clang-19.1.5-release/WeebX-Clang-19.1.5.tar.gz
-          mkdir -p weebx && tar xzf weebx.tar.gz -C weebx
+          echo "==> Neutron Clang (latest)"
+          mkdir -p neutron && cd neutron
+          bash <(curl -s "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman") -S
+          cd ..
           echo "==> LineageOS GCC 4.9 (arm64)"
           git clone --depth 1 \
             https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9 gcc64
           echo "==> LineageOS GCC 4.9 (arm32)"
           git clone --depth 1 \
             https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9 gcc32
-          ls weebx/bin/clang gcc64/bin/aarch64-linux-android-gcc gcc32/bin/arm-linux-androideabi-gcc
+          ls neutron/bin/clang gcc64/bin/aarch64-linux-android-gcc gcc32/bin/arm-linux-androideabi-gcc
 
       - name: Configure
         run: |
           cd kernel
-          export PATH="$GITHUB_WORKSPACE/toolchain/weebx/bin:$GITHUB_WORKSPACE/toolchain/gcc64/bin:$GITHUB_WORKSPACE/toolchain/gcc32/bin:$PATH"
+          export PATH="$GITHUB_WORKSPACE/toolchain/neutron/bin:$GITHUB_WORKSPACE/toolchain/gcc64/bin:$GITHUB_WORKSPACE/toolchain/gcc32/bin:$PATH"
           export ARCH=arm64
           export LLVM=1
           export CLANG_TRIPLE=aarch64-linux-android-
@@ -74,7 +74,7 @@ jobs:
         run: |
           set -o pipefail
           cd kernel
-          export PATH="$GITHUB_WORKSPACE/toolchain/weebx/bin:$GITHUB_WORKSPACE/toolchain/gcc64/bin:$GITHUB_WORKSPACE/toolchain/gcc32/bin:$PATH"
+          export PATH="$GITHUB_WORKSPACE/toolchain/neutron/bin:$GITHUB_WORKSPACE/toolchain/gcc64/bin:$GITHUB_WORKSPACE/toolchain/gcc32/bin:$PATH"
           export ARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-android-
           export CROSS_COMPILE=aarch64-linux-android-
