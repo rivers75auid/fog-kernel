@@ -2178,7 +2178,7 @@ new file mode 100644
 index 0000000..ea4c57d
 --- /dev/null
 +++ b/fs/susfs.c
-@@ -0,0 +1,1554 @@
+@@ -0,0 +1,1576 @@
 +#include <linux/version.h>
 +#include <linux/cred.h>
 +#include <linux/fs.h>
@@ -3760,7 +3760,7 @@ new file mode 100644
 index 0000000..aa14e91
 --- /dev/null
 +++ b/include/linux/susfs.h
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,249 @@
 +#ifndef KSU_SUSFS_H
 +#define KSU_SUSFS_H
 +
@@ -4015,7 +4015,7 @@ new file mode 100644
 index 0000000..7c28cdd
 --- /dev/null
 +++ b/include/linux/susfs_def.h
-@@ -0,0 +1,200 @@
+@@ -0,0 +1,201 @@
 +#ifndef KSU_SUSFS_DEF_H
 +#define KSU_SUSFS_DEF_H
 +
