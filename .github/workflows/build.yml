@@ -58,15 +58,14 @@ jobs:
           cd kernel
           export PATH="$GITHUB_WORKSPACE/toolchain/weebx/bin:$GITHUB_WORKSPACE/toolchain/gcc64/bin:$GITHUB_WORKSPACE/toolchain/gcc32/bin:$PATH"
           export ARCH=arm64
-          export LLVM=1
           export CLANG_TRIPLE=aarch64-linux-android-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           make vendor/fog-perf_defconfig
           make olddefconfig
           # Force MANUAL_HOOK (Kconfig choice defaults to tracepoint, must override after olddefconfig)
-          ./scripts/config --enable CONFIG_KSU_MANUAL_HOOK
-          make olddefconfig
+          # Do NOT run olddefconfig again after this - it would reset the choice to default
+          ./scripts/config --enable CONFIG_KSU_MANUAL_HOOK --disable CONFIG_KSU_TRACEPOINT_HOOK
           echo "=== KSU config check ==="
           grep -E "^CONFIG_KSU=|^CONFIG_KSU_MANUAL_HOOK=" .config
           test "$(grep -c '^CONFIG_KSU_MANUAL_HOOK=y' .config)" = "1"
