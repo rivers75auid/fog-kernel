@@ -64,6 +64,9 @@ jobs:
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           make vendor/fog-perf_defconfig
           make olddefconfig
+          # Force MANUAL_HOOK (Kconfig choice defaults to tracepoint, must override after olddefconfig)
+          ./scripts/config --enable CONFIG_KSU_MANUAL_HOOK
+          make olddefconfig
           echo "=== KSU config check ==="
           grep -E "^CONFIG_KSU=|^CONFIG_KSU_MANUAL_HOOK=" .config
           test "$(grep -c '^CONFIG_KSU_MANUAL_HOOK=y' .config)" = "1"
