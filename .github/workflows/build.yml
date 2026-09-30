@@ -66,9 +66,13 @@ jobs:
           # Force MANUAL_HOOK (Kconfig choice defaults to tracepoint, must override after olddefconfig)
           # Do NOT run olddefconfig again after this - it would reset the choice to default
           ./scripts/config --enable CONFIG_KSU_MANUAL_HOOK --disable CONFIG_KSU_TRACEPOINT_HOOK
+          # Disable SUSFS (no-SuSFS branch - prevent Kconfig from choosing SUSFS mode)
+          ./scripts/config --disable CONFIG_KSU_SUSFS
           echo "=== KSU config check ==="
           grep -E "^CONFIG_KSU=|^CONFIG_KSU_MANUAL_HOOK=" .config
           test "$(grep -c '^CONFIG_KSU_MANUAL_HOOK=y' .config)" = "1"
+          # Ensure SUSFS is disabled (no-SuSFS branch)
+          test "$(grep -c '^CONFIG_KSU_SUSFS=y' .config)" = "0"
           grep -E "^CONFIG_UKSM=|^CONFIG_KSM=|^CONFIG_ZRAM_DEF_COMP=|^CONFIG_DEFAULT_TCP_CONG=" .config
 
       - name: Build kernel
