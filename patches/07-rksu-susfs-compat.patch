@@ -1,0 +1,44 @@
+diff --git a/fs/susfs.c b/fs/susfs.c
+--- a/fs/susfs.c
++++ b/fs/susfs.c
+@@ -195,6 +195,17 @@
+ 	srcu_read_unlock(&susfs_srcu_sus_path_loop, srcu_idx);
+ 	revert_creds(saved);
+ }
++
++/* RKSU compatibility: global wrapper (v2.3.0 has it static without uid arg) */
++void susfs_run_sus_path_loop(uid_t uid) {
++	(void)uid; /* uid unused in v2.3.0 */
++	susfs_run_sus_path_loop_internal();
++}
++
++/* RKSU compatibility: stub for disabled MNT_ID_REORDER feature */
++void susfs_reorder_mnt_id(void) {
++	/* CONFIG_KSU_SUSFS_SUS_MOUNT_MNT_ID_REORDER is disabled; no-op */
++}
+ 
+ static inline bool is_i_uid_not_allowed(uid_t i_uid) {
+ 	return likely(current_uid().val != i_uid);
+diff --git a/include/linux/susfs.h b/include/linux/susfs.h
+--- a/include/linux/susfs.h
++++ b/include/linux/susfs.h
+@@ -189,11 +189,19 @@
+ /* sus_path */
+ #ifdef CONFIG_KSU_SUSFS_SUS_PATH
+ void susfs_add_sus_path(void __user **user_info);
+ void susfs_add_sus_path_loop(void __user **user_info);
+ /* RKSU compatibility: sets i_state on external dir root (android_data/sdcard) */
+ void susfs_set_i_state_on_external_dir(void __user **user_info);
++/* RKSU compatibility: global wrapper for sus_path_loop */
++void susfs_run_sus_path_loop(uid_t uid);
+ #endif
+ 
++/* sus_mount */
++#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
++/* RKSU compatibility: stub (MNT_ID_REORDER disabled) */
++void susfs_reorder_mnt_id(void);
++#endif
++
+ /* sus_kstat */
+ #ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
+ void susfs_add_sus_kstat(void __user **user_info);
