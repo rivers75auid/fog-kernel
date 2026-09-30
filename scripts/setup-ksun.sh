@@ -33,5 +33,21 @@ else
     echo "WARNING: SuSFS patch not found!"
 fi
 
+echo "==> Copying SuSFS new files (patch doesn't create them)"
+# The 50_add_susfs patch modifies existing files but doesn't create new ones
+# Copy them manually from susfs4ksu repo
+if [ -f "susfs4ksu/kernel_patches/fs/susfs.c" ]; then
+    cp susfs4ksu/kernel_patches/fs/susfs.c fs/susfs.c
+    echo "Copied fs/susfs.c"
+fi
+if [ -f "susfs4ksu/kernel_patches/include/linux/susfs.h" ]; then
+    cp susfs4ksu/kernel_patches/include/linux/susfs.h include/linux/susfs.h
+    echo "Copied include/linux/susfs.h"
+fi
+if [ -f "susfs4ksu/kernel_patches/include/linux/susfs_def.h" ]; then
+    cp susfs4ksu/kernel_patches/include/linux/susfs_def.h include/linux/susfs_def.h
+    echo "Copied include/linux/susfs_def.h"
+fi
+
 echo "==> KernelSU-Next + SuSFS setup done"
 ls -la drivers/kernelsu | head -5

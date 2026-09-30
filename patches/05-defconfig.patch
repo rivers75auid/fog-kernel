@@ -52,13 +52,13 @@ index a273e6b4d..6f20796b4 100644
  CONFIG_THINLTO=y
  # CONFIG_LTO_NONE is not set
 -# KernelSU
-+# KernelSU (ReSukiSU, manual hooks, no SuSFS)
-+# Note: ReSukiSU uses manual hooks on non-GKI 4.19
++# KernelSU (KSUN, manual hooks, with SuSFS)
++# Note: KSUN uses manual hooks on non-GKI 4.19
  CONFIG_KSU=y
  # CONFIG_KSU_DEBUG is not set
 +CONFIG_KSU_MANUAL_HOOK=y
  # I don't use kprobes for KSU
-@@ -689,4 +695,7 @@
+@@ -689,3 +689,6 @@
  CONFIG_HAVE_KPROBES=n
  CONFIG_KPROBE_EVENTS=n
  CONFIG_KPROBE_EVENT=n
