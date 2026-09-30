@@ -70,22 +70,34 @@ jobs:
           grep -E "^CONFIG_UKSM=|^CONFIG_KSM=|^CONFIG_ZRAM_DEF_COMP=|^CONFIG_DEFAULT_TCP_CONG=" .config
 
       - name: Build kernel
+        shell: bash
         run: |
+          set -o pipefail
           cd kernel
           export PATH="$GITHUB_WORKSPACE/toolchain/weebx/bin:$GITHUB_WORKSPACE/toolchain/gcc64/bin:$GITHUB_WORKSPACE/toolchain/gcc32/bin:$PATH"
           export ARCH=arm64
           export CLANG_TRIPLE=aarch64-linux-android-
           export CROSS_COMPILE=aarch64-linux-android-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-          # qcacld-3.0 has a transient parallel-build race; retry once on failure
-          set +e
-          make -j$(nproc) CC=clang Image.gz > ../build-first.log 2>&1
-          if [ $? -ne 0 ]; then
-            echo "First build attempt failed, retrying..."
-            tail -30 ../build-first.log
-            make -j$(nproc) CC=clang Image.gz > ../build-second.log 2>&1
-          fi
-          set -e
+          # Match proven local builds: CC=clang on command line (no LLVM=1,
+          # which switches to ld.lld and failed at vmlinux link in run #4)
+          build_args=(
+            ARCH="$ARCH"
+            CLANG_TRIPLE="$CLANG_TRIPLE"
+            CROSS_COMPILE="$CROSS_COMPILE"
+            CROSS_COMPILE_ARM32="$CROSS_COMPILE_ARM32"
+            CC=clang
+          )
+          echo "Using compiler: $(command -v clang)"
+          clang --version | head -2
+          make "${build_args[@]}" -j"$(nproc)" Image.gz \
+            > ../build-first.log 2>&1 || {
+              echo "Parallel build failed; retrying serially..."
+              tail -100 ../build-first.log
+              make V=1 "${build_args[@]}" -j1 Image.gz \
+                > ../build-second.log 2>&1
+            }
+          test -s arch/arm64/boot/Image.gz
           ls -lh arch/arm64/boot/Image.gz
 
       - name: Upload build logs on failure
@@ -93,9 +105,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-logs
+          if-no-files-found: ignore
           path: |
             build-first.log
             build-second.log
+            kernel/.config
 
       - name: Package flashable zip
         run: |
